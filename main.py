@@ -1,58 +1,197 @@
-import json
-import random
+# import json
+# import random
+# from fastmcp import FastMCP
+
+
+
+# # Create the FastMCP server instance.
+# mcp = FastMCP("Simple calculator Server")
+
+
+# # Tool: Add two numbers.
+# @mcp.tool
+# def add(a: int, b: int) -> int:
+#     """Add two numbers together.
+    
+#     Args:
+#         a: First number.
+#         b: Second number.
+    
+#     Returns:
+#         The sum of a and b.
+#     """
+#     return a + b
+
+
+# # Tool: Generate a random number.
+# @mcp.tool
+# def random_number(min_val: int = 1, max_val: int = 100) -> int:
+#     """Generate a random number within a range.
+    
+#     Args:
+#         min_val: Minimum value, inclusive. Defaults to 1.
+#         max_val: Maximum value, inclusive. Defaults to 100.
+    
+#     Returns:
+#         A random integer between min_val and max_val.
+#     """
+
+#     return random.randint(min_val, max_val)
+
+
+# # Resource: Server information.
+# @mcp.resource("info://server")
+# def server_info() -> str:
+#     """Get information about this server."""
+#     info = {
+#         "name": "Simple Calculator Server",
+#         "version": "1.0.0",
+#         "description": "A basic MCP server with math tools",
+#         "tools": ["add", "random_number"],
+#         "author": "Mitali Desai"
+#     }
+#     return json.dumps(info, indent=2)
+
+
+
+# if __name__ == "__main__":
+#     mcp.run(transport="http", host="0.0.0.0", port=8000)
+
+
+
 from fastmcp import FastMCP
+import os
+import sqlite3
+import tempfile
 
 
+TEMP_DIR = tempfile.gettempdir()
+DB_PATH  = os.path.join(os.path.dirname(__file__), "expenses.db")
+CATEGORIES_PATH = os.path.join(os.path.dirname(__file__),"categories.json")
 
-# Create the FastMCP server instance.
-mcp = FastMCP("Simple calculator Server")
+print(f"Database path: {DB_PATH}")
 
+mcp = FastMCP("ExpenseTracker")
 
-# Tool: Add two numbers.
-@mcp.tool
-def add(a: int, b: int) -> int:
-    """Add two numbers together.
+def init_db():
+    try:
+        with sqlite3.connect(DB_PATH)  as c:
+            c.execute("PRAGMA journal_mode=WAL")
+            c.execute("""
+                  CREATE TABLE IF NOT EXISTS expenses(
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      date TEXT NOT NULL,
+                      amount REAL NOT NULL,
+                      category TEXT NOT NULL,
+                      subcategory TEXT DEFAULT '',
+                      note TEXT DEFAULT ''
+                  )
+                  """)
+            
+            # c.execute("INSERT OR IGNORE INTO expenses(date, amount, category) VALUES ('2000-01-01',0,'test)")
+            c.execute(
+                    "INSERT OR IGNORE INTO expenses(date, amount, category) VALUES ('2000-01-01',0,'test')"
+                    )
+            c.execute("DELETE FROM expenses WHERE category ='test'")
+            print("Database initialized successfully with write access")
+    except Exception as e:
+        print(f"Database initialization error: {e}")
+init_db()
     
-    Args:
-        a: First number.
-        b: Second number.
+@mcp.tool()
+def add_expense(date, amount, category, subcategory="", note=""):
+    '''Add a new expenses entry to the database.'''
     
-    Returns:
-        The sum of a and b.
-    """
-    return a + b
+    try:
+        with sqlite3.connect(DB_PATH) as c:
+            cur = c.execute(
+            "INSERT INTO expenses(date, amount, category, subcategory, note) VALUES (?,?,?,?,?)",
+            (date, amount, category, subcategory, note)
+            )
+            expense_id = cur.lastrowid
+        c.commit()
 
+        return {"status": "success", "id":expense_id, "messages":"Expense added successfully"}
+    except sqlite3.OperationalError as e:
+        if "readonly"in str(e).lower():
+            return {"status":"error", "message": "Database is in read-only mode. Check file permissions."}
+        return {"status":"error", "message":f"Database error: {str(e)}"}
+    except Exception as e:
+        return {"status": "error", "message": f"Unexpected error "}
+        
 
-# Tool: Generate a random number.
-@mcp.tool
-def random_number(min_val: int = 1, max_val: int = 100) -> int:
-    """Generate a random number within a range.
+@mcp.tool()
+def list_expenses(start_date, end_date):
+    '''List expenses entries within a inclusive date range.'''
+    try:
+        with sqlite3.connect(DB_PATH) as c:
+            cur = c.execute(
+        """
+        SELECT id, date, amount, category, subcategory, note
+        FROM expenses
+        WHERE date BETWEEN ? AND ?
+        ORDER BY id ASC 
+        """,
+        (start_date, end_date)
+        )
+        
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, r)) for r in cur.fetchall()]
+    except Exception as e:
+        return {"status":"error", "message": f"Error listing expenses: {str(e)}"}
     
-    Args:
-        min_val: Minimum value, inclusive. Defaults to 1.
-        max_val: Maximum value, inclusive. Defaults to 100.
     
-    Returns:
-        A random integer between min_val and max_val.
-    """
+@mcp.tool()
+def summarize(start_date, end_date, category=None):
+    '''Summarize expenses by category within an inclusive date range.'''
+    try:
+        with sqlite3.connect(DB_PATH) as c:
 
-    return random.randint(min_val, max_val)
+            query = """
+            SELECT category, SUM(amount) AS total_amount
+            FROM expenses
+            WHERE date BETWEEN ? AND ?
+            """
 
+        params = [start_date, end_date]
 
-# Resource: Server information.
-@mcp.resource("info://server")
-def server_info() -> str:
-    """Get information about this server."""
-    info = {
-        "name": "Simple Calculator Server",
-        "version": "1.0.0",
-        "description": "A basic MCP server with math tools",
-        "tools": ["add", "random_number"],
-        "author": "Mitali Desai"
-    }
-    return json.dumps(info, indent=2)
+        if category:
+            query += " AND category = ?"
+            params.append(category)
 
+        query += " GROUP BY category ORDER BY total_amount DESC"
 
-
+        cur = c.execute(query, params)
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, r)) for r in cur.fetchall()]
+    except Exception as e:
+        return {"status":"error","message": f"Error summarizing expenses: {str(e)}"}
+    
+    
+@mcp.resource("expenses://categories", mime_type="application/json")
+def categories():
+    try:
+        default_categories ={
+            "categories":[
+                "Food & Dining",
+                "Transportation",
+                "Shopping",
+                "Entertainment",
+                "Bills & Utilities",
+                "Healthcare",
+                "Travel",
+                "Education",
+                "Other"
+            ]
+        }
+        try:
+            with open(CATEGORIES_PATH, "r", encoding="utf-8") as f:
+                return f.read()
+        except FileNotFoundError:
+            import json
+            return json.dumps(default_categories,indent=2)
+    except Exception as e:
+        return f'{{"error":"Could not load categories:{str(e)}"}}'
+    
 if __name__ == "__main__":
-    mcp.run(transport="http", host="0.0.0.0", port=8000)
+    mcp.run(transport="http", host="0.0.0.0", port=8001)
