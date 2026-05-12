@@ -39,7 +39,7 @@ async def init_db():
         print(f"Database initialization error: {e}")
         raise
 
-asyncio.run(init_db())
+# asyncio.run(init_db())
 
 
 @mcp.tool()
