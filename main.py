@@ -65,27 +65,6 @@ async def add_expense(date, amount, category, subcategory="", note=""):
     #     return {"status": "error", "message": f"Unexpected error: {str(e)}"}
 
 
-# @mcp.tool()
-# async def list_expenses(start_date, end_date):
-#     """List expense entries within an inclusive date range."""
-#     try:
-#         async with aiosqlite.connect(DB_PATH) as c:
-#             cur = await c.execute(
-#                 """
-#                 SELECT id, date, amount, category, subcategory, note
-#                 FROM expenses
-#                 WHERE date BETWEEN ? AND ?
-#                 ORDER BY id ASC
-#                 """,
-#                 (start_date, end_date)
-#             )
-#             # FIX: fetch results inside the 'with' block while connection is open
-#             cols = [d[0] for d in cur.description]
-#             return [dict(zip(cols, r)) for r in await cur.fetchall()]
-#     except Exception as e:
-#         return {"status": "error", "message": f"Error listing expenses: {str(e)}"}
-
-
 @mcp.tool()
 async def list_expenses(start_date, end_date):
     """List expense entries within an inclusive date range."""
