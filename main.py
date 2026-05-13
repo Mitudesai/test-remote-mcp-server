@@ -54,8 +54,6 @@ async def add_expense(date, amount, category, subcategory="", note=""):
             )
             expense_id = cur.lastrowid
             await c.commit()
-            # FIX: commit inside the 'with' block (auto-committed by context manager,
-            # but explicit commit here is safe and clear)
         return {"status": "success", "id": expense_id, "message": "Expense added successfully"}
     except Exception as e:
         if "readonly" in str(e).lower():
@@ -143,12 +141,6 @@ def categories():
         return json.dumps(default_categories, indent=2)
     except Exception as e:
         return json.dumps({"error": f"Could not load categories: {str(e)}"})
-
-
-# if __name__ == "__main__":
-#     mcp.run(transport="http", host="0.0.0.0", port=8001)
-# if __name__ == "__main__":
-#     mcp.run()
 
 if __name__ == "__main__":
     asyncio.run(init_db())
