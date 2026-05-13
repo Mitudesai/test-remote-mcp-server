@@ -87,10 +87,7 @@ async def add_expense(date, amount, category, subcategory="", note=""):
 
 
 @mcp.tool()
-async def list_expenses(
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None
-):
+async def list_expenses(start_date, end_date):
     """List expense entries within an inclusive date range."""
     try:
         async with aiosqlite.connect(DB_PATH) as c:
@@ -118,54 +115,18 @@ async def list_expenses(
     except Exception as e:
         return {"status": "error", "message": f"Error listing expenses: {str(e)}"}
 
-# @mcp.tool()
-# async def summarize(start_date, end_date, category=None):
-#     """Summarize expenses by category within an inclusive date range."""
-#     try:
-#         # FIX: build query and execute entirely inside the 'with' block
-#         async with aiosqlite.connect(DB_PATH) as c:
-#             query = """
-#                 SELECT category, SUM(amount) AS total_amount
-#                 FROM expenses
-#                 WHERE date BETWEEN ? AND ?
-#             """
-#             params = [start_date, end_date]
-
-#             if category:
-#                 query += " AND category = ?"
-#                 params.append(category)
-
-#             query += " GROUP BY category ORDER BY total_amount DESC"
-
-#             cur = await c.execute(query, params)
-#             cols = [d[0] for d in cur.description]
-#             return [dict(zip(cols, r)) for r in await cur.fetchall()]
-#     except Exception as e:
-#         return {"status": "error", "message": f"Error summarizing expenses: {str(e)}"}
-
-
 @mcp.tool()
-async def summarize(
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    category: Optional[str] = None
-):
-    """Summarize expenses by category."""
-
+async def summarize(start_date, end_date, category=None):
+    """Summarize expenses by category within an inclusive date range."""
     try:
+        # FIX: build query and execute entirely inside the 'with' block
         async with aiosqlite.connect(DB_PATH) as c:
-
             query = """
-                SELECT category, SUM(amount) AS total_amount
+                SELECT category, subcategory, SUM(amount) AS total_amount
                 FROM expenses
-                WHERE 1=1
+                WHERE date BETWEEN ? AND ?
             """
-
-            params = []
-
-            if start_date and end_date:
-                query += " AND date BETWEEN ? AND ?"
-                params.extend([start_date, end_date])
+            params = [start_date, end_date]
 
             if category:
                 query += " AND category = ?"
@@ -174,12 +135,11 @@ async def summarize(
             query += " GROUP BY category ORDER BY total_amount DESC"
 
             cur = await c.execute(query, params)
-
             cols = [d[0] for d in cur.description]
             return [dict(zip(cols, r)) for r in await cur.fetchall()]
-
     except Exception as e:
         return {"status": "error", "message": f"Error summarizing expenses: {str(e)}"}
+
 
 @mcp.resource("expenses://categories", mime_type="application/json")
 def categories():
